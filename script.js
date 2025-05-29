@@ -1,10 +1,5 @@
 
 let win = 0, loss = 0, stopAtivo = false;
-let ultimos = [];
-
-const API_KEY = "64913c84a4194725945d04a19ff7f8f6"; // Substitua pelo seu da Twelve Data
-const SYMBOL = "EUR/USD";
-const INTERVAL = "1min";
 
 function registrar(tipo) {
   if (tipo === 'WIN') win++;
@@ -17,20 +12,23 @@ function registrar(tipo) {
 }
 
 async function buscarCandles() {
-  const url = `https://api.twelvedata.com/time_series?symbol=EURUSD&interval=1min&outputsize=100&apikey=${API_KEY}`;
+  const url = "https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=EUR&to_symbol=USD&interval=1min&apikey=64913c84a4194725945d04a19ff7f8f6&outputsize=compact";
   try {
     const res = await fetch(url);
     const data = await res.json();
-    if (!data.values) return;
-    const candles = data.values.reverse().map(c => ({
-      open: parseFloat(c.open),
-      high: parseFloat(c.high),
-      low: parseFloat(c.low),
-      close: parseFloat(c.close)
-    }));
+    const series = data["Time Series FX (1min)"];
+    if (!series) return;
+    const candles = Object.entries(series).slice(0, 100).reverse().map(([time, val]) => {
+      return {
+        open: parseFloat(val["1. open"]),
+        high: parseFloat(val["2. high"]),
+        low: parseFloat(val["3. low"]),
+        close: parseFloat(val["4. close"])
+      };
+    });
     avaliarSinal(candles);
   } catch (e) {
-    console.error("Erro ao buscar candles:", e);
+    console.error("Erro ao buscar da Alpha Vantage:", e);
   }
 }
 
@@ -48,9 +46,8 @@ function calcularRSI(candles) {
   return 100 - (100 / (1 + rs));
 }
 
-function detectarEngolfo(open1, close1, open2, close2) {
-  return (close2 > open2 && open2 < close1 && close2 > open1) ||
-         (close2 < open2 && open2 > close1 && close2 < open1) ? 1 : 0;
+function detectarEngolfo(o1, c1, o2, c2) {
+  return (c2 > o2 && o2 < c1 && c2 > o1) || (c2 < o2 && o2 > c1 && c2 < o1) ? 1 : 0;
 }
 
 function forcaVelas(candles) {
@@ -90,20 +87,19 @@ function avaliarSinal(candles) {
   else if (rsi < 40) { criterios.push("RSI baixo"); score += 20; }
 
   if (detectarEngolfo(candles[8].open, candles[8].close, candles[9].open, candles[9].close)) {
-    criterios.push("Padrão de Engolfo"); score += 20;
+    criterios.push("Engolfo"); score += 20;
   }
 
   const tendencia = forcaVelas(candles);
   if (tendencia !== "ESPERAR") {
-    criterios.push("Força das Velas: " + tendencia);
-    score += 20;
+    criterios.push("Força Velas: " + tendencia); score += 20;
   }
 
   const sma = cruzamentoSMA(candles);
   const ema = calcularEMA(candles);
   const close = candles[candles.length - 1].close;
   if ((sma === "CALL" && close > ema) || (sma === "PUT" && close < ema)) {
-    criterios.push("Confirmação por EMA"); score += 20;
+    criterios.push("EMA confirmando"); score += 20;
   }
 
   if (score >= 60) {
@@ -111,7 +107,7 @@ function avaliarSinal(candles) {
     document.getElementById("score").textContent = `${score}%`;
     document.getElementById("hora").textContent = new Date().toLocaleTimeString();
     const li = document.createElement("li");
-    li.textContent = `${sma} (${score}%) - ${new Date().toLocaleTimeString()}`;
+    li.textContent = `${sma} (${score}%) - ` + new Date().toLocaleTimeString();
     document.getElementById("ultimos").prepend(li);
     criterios.forEach(c => {
       const el = document.createElement("li");
