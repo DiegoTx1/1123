@@ -1,0 +1,140 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>TX1 ULTRA PRO V6 - Crypto IDX</title>
+  <style>
+    body { background: black; color: #00ffff; font-family: monospace; margin: 0; padding: 0; }
+    .container { display: flex; height: 100vh; }
+    .left { width: 40%; padding: 20px; box-sizing: border-box; }
+    .right { width: 60%; background: #111; }
+    h1 { font-size: 20px; margin-bottom: 10px; }
+    input, button { padding: 5px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+    .painel { border: 1px solid #0ff; padding: 10px; background: #111; margin-top: 10px; }
+    .log { height: 100px; overflow-y: auto; background: #000; color: #0ff; padding: 5px; font-size: 12px; border: 1px solid #0ff; }
+    iframe { width: 100%; height: 100%; border: none; }
+    .ligado { color: lime; }
+    .desligado { color: red; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="left">
+      <h1>TX1 ULTRA PRO V6</h1>
+      <input id="appId" placeholder="App ID" value="1089">
+      <input id="token" placeholder="API Token">
+      <input id="symbol" value="R_100" disabled>
+      <button onclick="iniciar()">INICIAR</button>
+      <button onclick="desligar()">DESLIGAR</button>
+
+      <div class="painel">
+        <div><strong>Critérios Ativos:</strong></div>
+        <ul>
+          <li>Fluxo de 3 velas</li>
+          <li>Corpo dominante > 60%</li>
+          <li>Relevância ATR ≥ 20%</li>
+          <li>EMA5 vs EMA20 (Tendência)</li>
+          <li>Score técnico ≥ 1.5</li>
+        </ul>
+        <div>Comando: <span id="comando" class="desligado">DESLIGADO</span></div>
+        <div>Última Análise: <span id="hora">--:--:--</span></div>
+        <div>Score: <span id="score">0.00</span></div>
+        <div>Próxima vela em: <span id="cronometro">--</span></div>
+      </div>
+
+      <div class="painel">
+        <button onclick="registrar('WIN')">WIN</button>
+        <button onclick="registrar('LOSS')">LOSS</button>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+    <div class="right">
+      <iframe src="https://s.tradingview.com/widgetembed/?symbol=DERIV%3AR_100&interval=1&theme=dark"></iframe>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/technicalindicators@3.0.0/dist/browser.js"></script>
+  <script>
+    let ws = null, candles = [], cronometroId = null;
+    let tempoRestante = 60;
+
+    function iniciar() {
+      const token = document.getElementById("token").value.trim();
+      const appId = document.getElementById("appId").value.trim();
+      if (!token || !appId) return alert("Informe o Token e App ID!");
+
+      document.getElementById("comando").textContent = "LIGADO";
+      document.getElementById("comando").className = "ligado";
+
+      ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=" + appId);
+      ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
+      ws.onmessage = ({ data }) => {
+        const msg = JSON.parse(data);
+        if (msg.msg_type === "authorize") {
+          ws.send(JSON.stringify({ candles: "R_100", granularity: 60, subscribe: 1 }));
+        }
+        if (msg.msg_type === "candles") {
+          processCandles(msg.candles);
+          tempoRestante = 60;
+        }
+      };
+
+      iniciarCronometro();
+    }
+
+    function desligar() {
+      if (ws) ws.close();
+      document.getElementById("comando").textContent = "DESLIGADO";
+      document.getElementById("comando").className = "desligado";
+      clearInterval(cronometroId);
+      document.getElementById("cronometro").textContent = "--";
+    }
+
+    function processCandles(c) {
+      candles = c.map(x => ({
+        time: x.epoch,
+        open: parseFloat(x.open),
+        high: parseFloat(x.high),
+        low: parseFloat(x.low),
+        close: parseFloat(x.close)
+      }));
+      if (candles.length >= 20) analyze();
+    }
+
+    function analyze() {
+      const c = candles.slice(-3);
+      const atr = technicalindicators.ATR.calculate({ high: candles.map(c => c.high), low: candles.map(c => c.low), close: candles.map(c => c.close), period: 14 }).pop();
+      const ema5 = technicalindicators.EMA.calculate({ period: 5, values: candles.map(c => c.close) }).pop();
+      const ema20 = technicalindicators.EMA.calculate({ period: 20, values: candles.map(c => c.close) }).pop();
+      const dir = c[2].close > c[2].open ? 'CALL' : 'PUT';
+      const fluxo = c.every(v => v.close > v.open) || c.every(v => v.close < v.open);
+      const corpo = Math.abs(c[2].close - c[2].open);
+      const range = c[2].high - c[2].low;
+      const score = range > 0 ? corpo / range : 0;
+      const relevante = corpo >= atr * 0.2;
+      const tendencia = (dir === 'CALL' && ema5 > ema20) || (dir === 'PUT' && ema5 < ema20);
+      const forte = score >= 1.5;
+
+      const passou = fluxo && relevante && tendencia && score >= 0.6 && forte;
+      document.getElementById("comando").textContent = passou ? dir : "SEM SINAL";
+      document.getElementById("score").textContent = score.toFixed(2);
+      document.getElementById("hora").textContent = new Date(c[2].time * 1000).toLocaleTimeString();
+    }
+
+    function registrar(tipo) {
+      const log = document.getElementById("log");
+      log.innerHTML += `[${new Date().toLocaleTimeString()}] ${tipo}<br>`;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function iniciarCronometro() {
+      cronometroId = setInterval(() => {
+        tempoRestante--;
+        if (tempoRestante <= 0) tempoRestante = 60;
+        document.getElementById("cronometro").textContent = tempoRestante + "s";
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
