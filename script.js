@@ -17,7 +17,7 @@ function registrar(tipo) {
 }
 
 async function buscarCandles() {
-  const url = `https://api.twelvedata.com/time_series?symbol=EUR/USD&interval=1min&outputsize=100&apikey=${API_KEY}`;
+  const url = `https://api.twelvedata.com/time_series?symbol=EURUSD&interval=1min&outputsize=100&apikey=${API_KEY}`;
   try {
     const res = await fetch(url);
     const data = await res.json();
