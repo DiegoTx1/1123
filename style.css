@@ -1,30 +1,22 @@
-
 body {
-  background-color: #000;
-  color: cyan;
-  font-family: monospace;
+  font-family: Arial, sans-serif;
+  background: #121212;
+  color: #fff;
+  margin: 0;
+  padding: 20px;
+}
+
+.signal {
+  background: #333;
+  padding: 20px;
+  border-radius: 10px;
   text-align: center;
+  margin: 20px 0;
 }
-.container {
-  max-width: 900px;
-  margin: auto;
-  padding-top: 20px;
-}
-button {
-  margin: 5px;
-  padding: 8px 20px;
-  font-size: 16px;
-}
-ul { list-style: none; padding: 0; }
-.painel-central {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-}
-.coluna-esquerda, .coluna-direita {
-  flex: 1;
-  text-align: left;
-}
-.grafico {
-  margin-top: 20px;
+
+.signal.call { background: #4CAF50; }
+.signal.put { background: #F44336; }
+
+.indicators li {
+  margin: 10px 0;
 }
